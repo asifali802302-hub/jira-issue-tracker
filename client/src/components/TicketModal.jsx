@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react'
-import { issueAPI } from '../services/api'
+import React, { useState, useEffect, useCallback } from 'react'
+import { issueAPI, attachmentAPI } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import CommentsSection from './CommentsSection'
 import { getIssueTypeIcon, getPriorityIcon } from './TicketCard'
-import { X, Trash2, Calendar, User, Check, Clock } from 'lucide-react'
+import { X, Trash2, Calendar, User, Check, Paperclip, Upload, Image as ImageIcon } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export default function TicketModal({
@@ -24,6 +24,20 @@ export default function TicketModal({
   const [assigneeId, setAssigneeId] = useState('')
   const [saving, setSaving] = useState(false)
 
+  // Attachments state
+  const [attachments, setAttachments] = useState([])
+  const [uploading, setUploading] = useState(false)
+
+  const fetchAttachments = useCallback(async () => {
+    if (!issue?.id) return
+    try {
+      const res = await attachmentAPI.getByIssue(issue.id)
+      setAttachments(res.data)
+    } catch {
+      // Ignored
+    }
+  }, [issue?.id])
+
   useEffect(() => {
     if (issue) {
       setTitle(issue.title || '')
@@ -32,8 +46,9 @@ export default function TicketModal({
       setPriority(issue.priority || 'MEDIUM')
       setType(issue.type || 'BUG')
       setAssigneeId(issue.assignee ? issue.assignee.id.toString() : '')
+      fetchAttachments()
     }
-  }, [issue])
+  }, [issue, fetchAttachments])
 
   if (!isOpen || !issue) return null
 
@@ -70,6 +85,33 @@ export default function TicketModal({
       onClose()
     } catch (err) {
       toast.error(err.response?.data?.message || 'Cannot delete ticket')
+    }
+  }
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+
+    setUploading(true)
+    try {
+      const res = await attachmentAPI.upload(issue.id, file)
+      setAttachments((prev) => [res.data, ...prev])
+      toast.success('Screenshot/attachment uploaded!')
+    } catch {
+      toast.error('Failed to upload attachment')
+    } finally {
+      setUploading(false)
+      e.target.value = ''
+    }
+  }
+
+  const handleDeleteAttachment = async (attId) => {
+    try {
+      await attachmentAPI.delete(attId)
+      setAttachments((prev) => prev.filter((a) => a.id !== attId))
+      toast.success('Attachment removed')
+    } catch {
+      toast.error('Could not delete attachment')
     }
   }
 
@@ -139,7 +181,6 @@ export default function TicketModal({
 
           {/* Grid Settings: Status, Priority, Type, Assignee */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-950/40 p-3.5 rounded-2xl border border-slate-800/80">
-            {/* Status */}
             <div>
               <label className="block text-[11px] font-bold text-slate-400 mb-1">Status</label>
               <select
@@ -153,7 +194,6 @@ export default function TicketModal({
               </select>
             </div>
 
-            {/* Priority */}
             <div>
               <label className="block text-[11px] font-bold text-slate-400 mb-1">Priority</label>
               <select
@@ -168,7 +208,6 @@ export default function TicketModal({
               </select>
             </div>
 
-            {/* Type */}
             <div>
               <label className="block text-[11px] font-bold text-slate-400 mb-1">Type</label>
               <select
@@ -183,7 +222,6 @@ export default function TicketModal({
               </select>
             </div>
 
-            {/* Assignee */}
             <div>
               <label className="block text-[11px] font-bold text-slate-400 mb-1">Assignee</label>
               <select
@@ -218,6 +256,62 @@ export default function TicketModal({
               <Check className="w-4 h-4" />
               <span>{saving ? 'Saving...' : 'Save Changes'}</span>
             </button>
+          </div>
+
+          {/* Attachments & Screenshots (Use Case 10) */}
+          <div className="pt-4 border-t border-slate-800 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-200">
+                <Paperclip className="w-3.5 h-3.5 text-blue-400" />
+                <span>Screenshots & Attachments ({attachments.length})</span>
+              </div>
+
+              <label className="flex items-center gap-1.5 px-3 py-1 bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 rounded-lg border border-slate-700 cursor-pointer transition">
+                <Upload className="w-3.5 h-3.5 text-blue-400" />
+                <span>{uploading ? 'Uploading...' : 'Attach File'}</span>
+                <input
+                  type="file"
+                  accept="image/*,.pdf,.txt"
+                  onChange={handleFileUpload}
+                  disabled={uploading}
+                  className="hidden"
+                />
+              </label>
+            </div>
+
+            {attachments.length > 0 && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                {attachments.map((att) => (
+                  <div
+                    key={att.id}
+                    className="group relative p-2 bg-slate-950/80 rounded-xl border border-slate-800 flex flex-col items-center text-center overflow-hidden"
+                  >
+                    {att.fileType?.startsWith('image/') ? (
+                      <img
+                        src={`data:${att.fileType};base64,${att.base64Data}`}
+                        alt={att.fileName}
+                        className="w-full h-20 object-cover rounded-lg mb-1.5"
+                      />
+                    ) : (
+                      <div className="w-full h-20 bg-slate-900 rounded-lg flex items-center justify-center mb-1.5">
+                        <ImageIcon className="w-6 h-6 text-slate-600" />
+                      </div>
+                    )}
+                    <span className="text-[11px] text-slate-300 font-medium truncate w-full" title={att.fileName}>
+                      {att.fileName}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteAttachment(att.id)}
+                      className="absolute top-1.5 right-1.5 p-1 bg-slate-900/90 text-slate-400 hover:text-rose-400 rounded-lg opacity-0 group-hover:opacity-100 transition shadow"
+                      title="Delete attachment"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Discussion comments */}

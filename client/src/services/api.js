@@ -50,4 +50,16 @@ export const commentAPI = {
   delete: (id) => API.delete(`/comments/${id}`),
 }
 
+export const attachmentAPI = {
+  getByIssue: (issueId) => API.get(`/issues/${issueId}/attachments`),
+  upload: (issueId, file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return API.post(`/issues/${issueId}/attachments`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  delete: (id) => API.delete(`/attachments/${id}`),
+}
+
 export default API
