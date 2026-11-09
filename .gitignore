@@ -1,0 +1,18 @@
+# Node / Frontend
+client/node_modules/
+client/dist/
+client/.vite/
+
+# Java / Backend
+server/target/
+server/*.jar
+*.class
+
+# Environment & IDE
+.env
+.env.local
+.DS_Store
+.idea/
+*.iml
+.vscode/
+Thumbs.db
